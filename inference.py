@@ -1,29 +1,45 @@
+"""
+Inference script supporting Multi-Pipeline Variants (V1, V2, V3, V4).
+Usage:
+    python inference.py --image path/to/image.jpg
+    python inference.py --variant v2 --image path/to/image.jpg
+    python inference.py --variant v3 --image path/to/image.jpg
+    python inference.py --variant v4 --image path/to/image.jpg
+"""
+
 import sys
 import os
 import json
-from solution import TrafficViolationDetector
+import argparse
+from pipelines import get_pipeline
+
 
 def main():
-    # Initialize detector with bundled models
-    model = TrafficViolationDetector("./models")
+    parser = argparse.ArgumentParser(description="Two-Wheeler Traffic Rule Violation Inference")
+    parser.add_argument("pos_image", nargs="?", default=None, help="Positional image path")
+    parser.add_argument("--image", "-i", type=str, default=None, help="Path to input traffic frame")
+    parser.add_argument("--variant", "-v", type=str, default="v1", choices=["v1", "v2", "v3", "v4"],
+                        help="Pipeline variant to run (default: v1)")
+    parser.add_argument("--model_dir", "-m", type=str, default="./models", help="Models directory")
+    args = parser.parse_args()
 
-    # Determine image path from CLI argument or default test path
-    if len(sys.argv) > 1:
-        image_path = sys.argv[1]
-    else:
-        # Example / Default fallback path
+    # Determine image path from either positional argument or --image flag
+    image_path = args.image or args.pos_image
+
+    if not image_path:
         image_path = "test_image.jpg"
-        print(f"[INFO] No image path provided. Usage: python inference.py <path_to_image>")
-        print(f"[INFO] Attempting default test path: '{image_path}'\n")
+        print(f"[INFO] No image path provided. Usage: python inference.py --variant {args.variant} --image <path_to_image>")
+        print(f"[INFO] Running default test path: '{image_path}' (safe non-crashing fallback)\n")
 
-    if not os.path.exists(image_path):
-        print(f"[WARNING] Image '{image_path}' not found on disk.")
-        print(f"[INFO] Running predict() to demonstrate safe fallback output:")
+    print(f"[*] Initializing Pipeline Variant: {args.variant.upper()}...")
+    detector = get_pipeline(variant=args.variant, model_dir=args.model_dir)
 
-    # Run inference
-    output = model.predict(image_path)
+    print(f"[*] Running inference on: {image_path}")
+    output = detector.predict(image_path)
+
     print("\n--- Detection Result ---")
     print(json.dumps(output, indent=2))
+
 
 if __name__ == "__main__":
     main()

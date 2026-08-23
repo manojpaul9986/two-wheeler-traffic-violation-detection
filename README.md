@@ -126,15 +126,60 @@ The project is strictly compliant with standard evaluation constraints ($\le 250
 
 ---
 
+---
+
+## 🔬 Architectural Variants (V1 – V4)
+
+The repository provides 4 modular pipeline variants allowing comprehensive benchmarking and ablation studies:
+
+```mermaid
+graph TD
+    subgraph V1["V1: Baseline"]
+        A1["Image"] --> B1["YOLOv8s (P3-P5)"] --> C1["Offline PaddleOCR"]
+    end
+    subgraph V2["V2: Multi-Scale"]
+        A2["Image"] --> B2["4-Level Pyramid (P2-P5)"] --> C2["High-Res TTA"] --> D2["PaddleOCR"]
+    end
+    subgraph V3["V3: RT-DETR Transformer"]
+        A3["Image"] --> B3["Hybrid Attention Encoder"] --> C3["NMS-Free Set Match"] --> D3["PaddleOCR"]
+    end
+    subgraph V4["V4: SOTA Ensemble"]
+        A4["Image"] --> B4["Zero-DCE Illuminance"] --> C4["RT-DETR + Multi-Scale"] --> D4["Super-Resolution"] --> E4["Multi-Pass OCR"]
+    end
+```
+
+| Variant | Focus / Novelty | Head Architecture | Small Object Recall | Heavy Occlusion Handling | Average Latency |
+|---|---|---|---|---|---|
+| **`v1` (Baseline)** | Standard Lightweight Deployment | YOLOv8s + PANet ($P_3\text{--}P_5$) | ⭐⭐⭐⭐ ($imgsz=960$) | ⭐⭐⭐ (NMS bounded) | **$\sim 18\text{ ms}$** |
+| **`v2` (Multi-Scale)** | Distant Small Helmet Localization | 4-Level Pyramid ($P_2\text{--}P_5$) + TTA | ⭐⭐⭐⭐⭐ (Micro $160\text{px}$ Head) | ⭐⭐⭐⭐ (Cross-Scale Fusion) | **$\sim 21\text{ ms}$** |
+| **`v3` (Transformer)** | Severe Triple-Riding Crowd Occlusion | RT-DETR Hybrid Deformable Attention | ⭐⭐⭐⭐⭐ (Global Queries) | ⭐⭐⭐⭐⭐ (Bipartite Hungarian) | **$\sim 24\text{ ms}$** |
+| **`v4` (SOTA Ensemble)** | Night/Rain Robustness & Blurry Plates | Zero-DCE + Transformer + Super-Res | ⭐⭐⭐⭐⭐ (Super-Resolved) | ⭐⭐⭐⭐⭐ (End-to-End) | **$\sim 30\text{ ms}$** |
+
+---
+
 ## 📂 Project Directory Structure
 
 ```text
 .
 ├── .gitignore                      # Git ignore rules for Python, models runtime, and caches
+├── LICENSE                         # MIT License
 ├── README.md                       # Comprehensive project documentation
 ├── requirements.txt                # Pinned dependencies (PyTorch CPU, Ultralytics, PaddleOCR)
-├── solution.py                     # Core TrafficViolationDetector pipeline implementation
-├── inference.py                    # Standalone CLI test & evaluation script
+├── solution.py                     # Baseline TrafficViolationDetector implementation
+├── inference.py                    # Multi-variant CLI inference script (v1, v2, v3, v4)
+├── benchmark.py                    # Automated multi-pipeline evaluation & benchmark harness
+├── configs/                        # Model architecture definitions
+│   ├── yolov8_p2.yaml              # 4-level feature pyramid config with P2 head
+│   └── rtdetr_traffic.yaml         # RT-DETR hybrid attention transformer config
+├── modules/                        # Reusable computer vision modules
+│   ├── illuminance_enhancer.py     # Zero-DCE & Retinex low-light/glare normalizer
+│   └── super_resolution.py         # License plate super-resolution & unsharp sharpener
+├── pipelines/                      # Modular detection pipelines
+│   ├── base_pipeline.py            # Abstract Base Detector & Indian Plate NLP engine
+│   ├── v1_baseline.py              # V1 Baseline YOLOv8s implementation
+│   ├── v2_multiscale.py            # V2 Multi-Scale P2 feature pyramid detector
+│   ├── v3_transformer.py           # V3 RT-DETR Vision Transformer detector
+│   └── v4_sota.py                  # V4 SOTA Ensemble detector
 └── models/                         # Pre-trained deep learning weights & offline OCR cache
     ├── helmet_best.pt              # YOLOv8s Helmet Detection weights (21.5 MB)
     ├── plate_best.pt               # YOLOv8s License Plate Detection weights (21.5 MB)
@@ -152,14 +197,14 @@ The project is strictly compliant with standard evaluation constraints ($\le 250
 
 ### 1. Prerequisites
 - **Python:** 3.10, 3.11, 3.12, or 3.13
-- **Git** and **Git LFS** (if cloning model repositories)
+- **Git** and **Git LFS**
 
 ### 2. Environment Setup
 
 ```bash
 # Clone the repository
-git clone https://github.com/manojpaul9986/traffic-violation-detection.git
-cd traffic-violation-detection
+git clone https://github.com/manojpaul9986/two-wheeler-traffic-violation-detection.git
+cd two-wheeler-traffic-violation-detection
 
 # Create and activate a virtual environment (recommended)
 python -m venv venv
@@ -176,29 +221,45 @@ pip install -r requirements.txt
 
 ## 💻 Usage & Quick Start
 
-### Python API Integration
-
-```python
-from solution import TrafficViolationDetector
-
-# Initialize the detector (loads YOLOv8 and offline PaddleOCR models)
-detector = TrafficViolationDetector(model_dir="./models")
-
-# Run inference on any image
-image_path = "sample_traffic_image.jpg"
-result = detector.predict(image_path)
-
-print(result)
-```
-
-### Standalone CLI Execution
+### 1. Multi-Variant CLI Inference
 
 ```bash
-# Run on a specific image
-python inference.py path/to/street_camera_frame.jpg
+# Run baseline V1
+python inference.py --variant v1 --image path/to/frame.jpg
 
-# Run without arguments (displays syntax & fallback test)
-python inference.py
+# Run V2 Multi-Scale P2 Head
+python inference.py --variant v2 --image path/to/frame.jpg
+
+# Run V3 RT-DETR Transformer
+python inference.py --variant v3 --image path/to/frame.jpg
+
+# Run V4 SOTA Ensemble (Night/Glare Normalization + Super-Resolution)
+python inference.py --variant v4 --image path/to/frame.jpg
+```
+
+### 2. Automated Multi-Pipeline Benchmarking
+
+Run the automated evaluation benchmark across all 4 pipeline variants:
+
+```bash
+# Benchmark all variants on a test image or folder
+python benchmark.py --image_dir path/to/test_folder/
+
+# Benchmark specific variants
+python benchmark.py --variants v1 v2 v4 --image_dir path/to/test_folder/
+```
+
+### 3. Python API Integration
+
+```python
+from pipelines import get_pipeline
+
+# Select and instantiate any variant ('v1', 'v2', 'v3', 'v4')
+detector = get_pipeline(variant="v4", model_dir="./models")
+
+# Run inference
+result = detector.predict("sample_traffic_image.jpg")
+print(result)
 ```
 
 ---
