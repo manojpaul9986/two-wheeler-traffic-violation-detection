@@ -4,6 +4,7 @@
 [![PyTorch](https://img.shields.io/badge/PyTorch-2.6.0-EE4C2C.svg?logo=pytorch&logoColor=white)](https://pytorch.org/)
 [![Ultralytics YOLOv8](https://img.shields.io/badge/YOLOv8-v8.4.49-00FFFF.svg?logo=ultralytics&logoColor=white)](https://github.com/ultralytics/ultralytics)
 [![PaddleOCR](https://img.shields.io/badge/PaddleOCR-v3.5.0-red.svg?logo=baidu&logoColor=white)](https://github.com/PaddlePaddle/PaddleOCR)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Course](https://img.shields.io/badge/Course-AID%20728%20(Computer%20Vision)-purple.svg)](https://www.iiitb.ac.in/)
 [![Institution](https://img.shields.io/badge/IIIT-Bangalore-orange.svg)](https://www.iiitb.ac.in/)
 
