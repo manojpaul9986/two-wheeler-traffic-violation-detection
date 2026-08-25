@@ -15,5 +15,12 @@ class V1BaselineDetector(BaseTrafficViolationDetector):
         super().__init__(model_dir=model_dir, variant_name="V1_Baseline")
         self.detector = TrafficViolationDetector(model_dir=model_dir)
 
+        # Expose model references for visualization and inspection
+        self.rider_group_model = self.detector.rider_group_model
+        self.helmet_model = self.detector.helmet_model
+        self.plate_model = self.detector.plate_model
+        self.ocr = self.detector.ocr
+        self.device = self.detector.device
+
     def predict(self, image_path: str) -> dict:
         return self.detector.predict(image_path)
