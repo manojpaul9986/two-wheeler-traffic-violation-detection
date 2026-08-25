@@ -52,6 +52,7 @@ class V3TransformerDetector(BaseTrafficViolationDetector):
             use_textline_orientation=True,
             use_doc_orientation_classify=False,
             use_doc_unwarping=False,
+            enable_mkldnn=False,
             lang="en",
         )
 
