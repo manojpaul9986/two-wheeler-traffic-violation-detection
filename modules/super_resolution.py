@@ -62,17 +62,13 @@ class PlateSuperResolver:
             lab = cv2.cvtColor(image, cv2.COLOR_BGR2LAB)
             l, a, b = cv2.split(lab)
 
-            # CLAHE on luminance
+            # CLAHE on luminance channel
             clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(4, 4))
             enhanced_l = clahe.apply(l)
 
-            # Morphological Top-Hat / Black-Hat filtering for character separation
-            kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))
-            top_hat = cv2.morphologyEx(enhanced_l, cv2.MORPH_TOPHAT, kernel)
-            black_hat = cv2.morphologyEx(enhanced_l, cv2.MORPH_BLACKHAT, kernel)
-            
-            enhanced_l = cv2.add(enhanced_l, top_hat)
-            enhanced_l = cv2.subtract(enhanced_l, black_hat)
+            # Sub-pixel stroke sharpening
+            blur_l = cv2.GaussianBlur(enhanced_l, (0, 0), sigmaX=1.5)
+            enhanced_l = cv2.addWeighted(enhanced_l, 1.4, blur_l, -0.4, 0)
 
             merged = cv2.merge([enhanced_l, a, b])
             return cv2.cvtColor(merged, cv2.COLOR_LAB2BGR)

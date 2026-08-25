@@ -13,6 +13,7 @@ import logging
 import re
 from ultralytics import YOLO
 from .base_pipeline import BaseTrafficViolationDetector
+from modules.super_resolution import PlateSuperResolver
 
 logger = logging.getLogger(__name__)
 
@@ -23,6 +24,7 @@ class V2MultiScaleDetector(BaseTrafficViolationDetector):
     - Multi-scale feature pyramid aggregation for small objects.
     - Adaptive zoom ROI and high-resolution TTA.
     - Weighted bounding box fusion across pyramid scales.
+    - Super-resolution character stroke enhancement for ALPR.
     """
 
     CONF_RIDER_GROUP = 0.20
@@ -42,6 +44,7 @@ class V2MultiScaleDetector(BaseTrafficViolationDetector):
         self.rider_group_model = YOLO(os.path.join(self.model_dir, "rider_group_best.pt"))
         self.helmet_model = YOLO(os.path.join(self.model_dir, "helmet_best.pt"))
         self.plate_model = YOLO(os.path.join(self.model_dir, "plate_best.pt"))
+        self.super_resolver = PlateSuperResolver(target_min_height=64, target_min_width=140)
 
         # Initialize offline PaddleOCR
         from paddleocr import PaddleOCR
@@ -234,9 +237,13 @@ class V2MultiScaleDetector(BaseTrafficViolationDetector):
                 for box in results[0].boxes:
                     px1, py1, px2, py2 = box.xyxy[0].cpu().numpy().astype(int)
                     plate_crop = self.safe_crop(search_crop, px1, py1, px2, py2)
-                    if plate_crop is None:
+                    if plate_crop is None or plate_crop.size == 0:
                         continue
-                    text, conf = self._run_ocr(plate_crop)
+
+                    # Super-resolve plate crop to enhance character edges and stroke contrast
+                    sr_crop = self.super_resolver.resolve(plate_crop)
+                    text, conf = self._run_ocr(sr_crop)
+
                     if conf > best_conf and len(text) >= 4:
                         best_conf = conf
                         best_text = text
