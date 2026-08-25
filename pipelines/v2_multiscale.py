@@ -130,6 +130,11 @@ class V2MultiScaleDetector(BaseTrafficViolationDetector):
             if crop is None or crop.shape[0] < 15 or crop.shape[1] < 15:
                 return (3 if is_triple else 1), 1
 
+            # Adaptive confidence: for large clear crops (>200px), use 0.18 to reject background clutter; for distant crops, use 0.10
+            ch, cw = crop.shape[:2]
+            min_conf_helmet = 0.12 if max(ch, cw) < 200 else 0.20
+            min_conf_no_helmet = 0.10 if max(ch, cw) < 200 else 0.18
+
             # Multi-scale pyramid passes (captures both large/wide helmets and micro-scale cropped heads)
             scales = [320, 640, 960]
             fused_helmets = []
@@ -137,7 +142,7 @@ class V2MultiScaleDetector(BaseTrafficViolationDetector):
 
             for scale in scales:
                 res = self.helmet_model.predict(
-                    crop, imgsz=scale, conf=self.CONF_NO_HELMET,
+                    crop, imgsz=scale, conf=min_conf_no_helmet,
                     verbose=False, device=self.device
                 )
                 if res and res[0].boxes is not None:
@@ -145,9 +150,17 @@ class V2MultiScaleDetector(BaseTrafficViolationDetector):
                         h_cls = int(res[0].boxes.cls[j].item())
                         h_conf = float(res[0].boxes.conf[j].item())
                         h_box = res[0].boxes.xyxy[j].cpu().numpy().tolist()
-                        if h_cls == self.HELMET_CLS and h_conf >= self.CONF_HELMET:
+
+                        hx1, hy1, hx2, hy2 = h_box
+                        # Spatial filter: rider heads are located in the upper 70% of the vehicle crop
+                        if (hy1 + hy2) / 2 > ch * 0.70:
+                            continue
+                        if (hx2 - hx1) < 12 or (hy2 - hy1) < 12:
+                            continue
+
+                        if h_cls == self.HELMET_CLS and h_conf >= min_conf_helmet:
                             fused_helmets.append({"bbox": h_box, "conf": h_conf})
-                        elif h_cls == self.NO_HELMET_CLS and h_conf >= self.CONF_NO_HELMET:
+                        elif h_cls == self.NO_HELMET_CLS and h_conf >= min_conf_no_helmet:
                             fused_no_helmets.append({"bbox": h_box, "conf": h_conf})
 
             # Cross-scale deduplication

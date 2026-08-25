@@ -4,7 +4,7 @@ Draws color-coded bounding boxes for:
 - Two-Wheelers / Rider Groups (Cyan / Orange)
 - Helmets (Green)
 - Helmet Violations (Red)
-- License Plates with Decoded Text (Blue / Yellow)
+- License Plates with Decoded Text (Yellow / Cyan)
 """
 
 import cv2
@@ -39,35 +39,77 @@ def annotate_traffic_violations(image: np.ndarray, detector, output_path: str = 
             is_triple = (cls_id == 1)
 
             rg_label = f"{'TRIPLE RIDING' if is_triple else 'Rider Group'}: {conf:.2f}"
-            rg_color = (0, 140, 255) if is_triple else (255, 200, 0) # Orange if triple, Cyan if normal
+            rg_color = (0, 140, 255) if is_triple else (255, 200, 0)
             
             # Draw motorcycle box
             cv2.rectangle(vis, (bx1, by1), (bx2, by2), rg_color, 2)
-            cv2.putText(vis, rg_label, (bx1, max(18, by1 - 6)), cv2.FONT_HERSHEY_SIMPLEX, 0.45, rg_color, 2)
+            cv2.putText(vis, rg_label, (bx1, max(18, by1 - 6)), cv2.FONT_HERSHEY_SIMPLEX, 0.50, rg_color, 2)
 
-            # 2. Detect Helmets in Crop
+            # 2. Detect Helmets in Crop with Adaptive Confidence & Spatial Filter
             crop = image[max(0, by1):min(img_h, by2), max(0, bx1):min(img_w, bx2)]
-            if crop.size > 0:
+            ch, cw = crop.shape[:2]
+            if ch >= 15 and cw >= 15:
+                min_conf_helmet = 0.12 if max(ch, cw) < 200 else 0.20
+                min_conf_no_helmet = 0.10 if max(ch, cw) < 200 else 0.18
+
+                raw_helmets = []
+                raw_no_helmets = []
+
                 for scale in [320, 640, 960]:
-                    h_res = detector.helmet_model.predict(crop, imgsz=scale, conf=0.10, verbose=False, device=detector.device)
+                    h_res = detector.helmet_model.predict(crop, imgsz=scale, conf=min_conf_no_helmet, verbose=False, device=detector.device)
                     if h_res and h_res[0].boxes is not None:
                         for h_box in h_res[0].boxes:
                             hx1, hy1, hx2, hy2 = h_box.xyxy[0].cpu().numpy().astype(int)
-                            abs_hx1, abs_hy1 = bx1 + hx1, by1 + hy1
-                            abs_hx2, abs_hy2 = bx1 + hx2, by1 + hy2
                             h_cls = int(h_box.cls[0].item())
                             h_conf = float(h_box.conf[0].item())
 
-                            if h_cls == 0 and h_conf >= 0.12:  # Helmet
-                                h_color = (0, 255, 0) # Green
-                                h_text = f"Helmet: {h_conf:.2f}"
-                                cv2.rectangle(vis, (abs_hx1, abs_hy1), (abs_hx2, abs_hy2), h_color, 2)
-                                cv2.putText(vis, h_text, (abs_hx1, max(12, abs_hy1 - 4)), cv2.FONT_HERSHEY_SIMPLEX, 0.38, h_color, 1)
-                            elif h_cls == 1 and h_conf >= 0.10: # No Helmet
-                                h_color = (0, 0, 255) # Red
-                                h_text = f"NO HELMET: {h_conf:.2f}"
-                                cv2.rectangle(vis, (abs_hx1, abs_hy1), (abs_hx2, abs_hy2), h_color, 2)
-                                cv2.putText(vis, h_text, (abs_hx1, max(12, abs_hy1 - 4)), cv2.FONT_HERSHEY_SIMPLEX, 0.38, h_color, 1)
+                            # Spatial filter: head must be in top 70% of bike
+                            if (hy1 + hy2) / 2 > ch * 0.70:
+                                continue
+                            if (hx2 - hx1) < 12 or (hy2 - hy1) < 12:
+                                continue
+
+                            if h_cls == 0 and h_conf >= min_conf_helmet:
+                                raw_helmets.append({"bbox": [hx1, hy1, hx2, hy2], "conf": h_conf})
+                            elif h_cls == 1 and h_conf >= min_conf_no_helmet:
+                                raw_no_helmets.append({"bbox": [hx1, hy1, hx2, hy2], "conf": h_conf})
+
+                def dedup(b_list):
+                    s_list = sorted(b_list, key=lambda x: x["conf"], reverse=True)
+                    res = []
+                    while s_list:
+                        best = s_list.pop(0)
+                        res.append(best)
+                        res_filter = []
+                        for b in s_list:
+                            iou = 0.0
+                            if hasattr(detector, '_compute_iou'):
+                                iou = detector._compute_iou(best["bbox"], b["bbox"])
+                            elif hasattr(detector, 'compute_iou'):
+                                iou = detector.compute_iou(best["bbox"], b["bbox"])
+                            if iou < 0.45:
+                                res_filter.append(b)
+                        s_list = res_filter
+                    return res
+
+                final_h = dedup(raw_helmets)
+                final_nh = dedup(raw_no_helmets)
+
+                # Draw Helmets (Green)
+                for h in final_h:
+                    hx1, hy1, hx2, hy2 = h["bbox"]
+                    abs_hx1, abs_hy1 = bx1 + hx1, by1 + hy1
+                    abs_hx2, abs_hy2 = bx1 + hx2, by1 + hy2
+                    cv2.rectangle(vis, (abs_hx1, abs_hy1), (abs_hx2, abs_hy2), (0, 255, 0), 2)
+                    cv2.putText(vis, f"Helmet: {h['conf']:.2f}", (abs_hx1, max(12, abs_hy1 - 4)), cv2.FONT_HERSHEY_SIMPLEX, 0.40, (0, 255, 0), 1)
+
+                # Draw No Helmets (Red)
+                for nh in final_nh:
+                    hx1, hy1, hx2, hy2 = nh["bbox"]
+                    abs_hx1, abs_hy1 = bx1 + hx1, by1 + hy1
+                    abs_hx2, abs_hy2 = bx1 + hx2, by1 + hy2
+                    cv2.rectangle(vis, (abs_hx1, abs_hy1), (abs_hx2, abs_hy2), (0, 0, 255), 2)
+                    cv2.putText(vis, f"NO HELMET: {nh['conf']:.2f}", (abs_hx1, max(12, abs_hy1 - 4)), cv2.FONT_HERSHEY_SIMPLEX, 0.40, (0, 0, 255), 1)
 
             # 3. Detect License Plate in Expanded Area
             h_crop, w_crop = by2 - by1, bx2 - bx1

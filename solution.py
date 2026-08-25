@@ -197,44 +197,63 @@ class TrafficViolationDetector:
                 # Can't analyse — assume violation
                 return (3 if is_triple else 1), 1
 
-            results = self.helmet_model.predict(
-                crop, imgsz=960, conf=self.CONF_NO_HELMET,
-                verbose=False, device=self.device,
-            )
+            # Adaptive confidence: for large clear crops (>200px), use 0.18 to reject background clutter; for distant crops, use 0.10
+            ch, cw = crop.shape[:2]
+            min_conf_helmet = 0.12 if max(ch, cw) < 200 else 0.20
+            min_conf_no_helmet = 0.10 if max(ch, cw) < 200 else 0.18
 
-            helmet_boxes    = []
-            no_helmet_boxes = []
+            helmets = []
+            no_helmets = []
 
-            if results and results[0].boxes is not None:
-                for j in range(len(results[0].boxes)):
-                    h_cls  = int(results[0].boxes.cls[j].item())
-                    h_conf = float(results[0].boxes.conf[j].item())
-                    h_bbox = results[0].boxes.xyxy[j].cpu().numpy().tolist()
-                    if h_cls == self.HELMET_CLS and h_conf >= self.CONF_HELMET:
-                        helmet_boxes.append({"bbox": h_bbox, "conf": h_conf})
-                    elif h_cls == self.NO_HELMET_CLS and h_conf >= self.CONF_NO_HELMET:
-                        no_helmet_boxes.append({"bbox": h_bbox, "conf": h_conf})
+            for scale in [320, 640, 960]:
+                results = self.helmet_model.predict(
+                    crop, imgsz=scale, conf=min_conf_no_helmet,
+                    verbose=False, device=self.device
+                )
 
-            # Cross-class dedup: if helmet and no_helmet overlap, keep higher conf
-            filtered_no_helmet = []
-            for nh in no_helmet_boxes:
-                dominated = False
-                for h in helmet_boxes:
-                    if self._compute_iou(nh["bbox"], h["bbox"]) > 0.5 and h["conf"] > nh["conf"]:
-                        dominated = True
-                        break
-                if not dominated:
-                    filtered_no_helmet.append(nh)
+                if results and results[0].boxes is not None:
+                    for j in range(len(results[0].boxes)):
+                        h_cls = int(results[0].boxes.cls[j].item())
+                        h_conf = float(results[0].boxes.conf[j].item())
+                        h_box = results[0].boxes.xyxy[j].cpu().numpy().tolist()
 
-            filtered_helmet = []
-            for h in helmet_boxes:
-                dominated = False
-                for nh in no_helmet_boxes:
-                    if self._compute_iou(h["bbox"], nh["bbox"]) > 0.5 and nh["conf"] > h["conf"]:
-                        dominated = True
-                        break
-                if not dominated:
-                    filtered_helmet.append(h)
+                        hx1, hy1, hx2, hy2 = h_box
+                        # Spatial filter: rider heads are located in the upper 70% of the vehicle crop
+                        if (hy1 + hy2) / 2 > ch * 0.70:
+                            continue
+                        # Dimension filter: reject tiny noise slivers
+                        if (hx2 - hx1) < 12 or (hy2 - hy1) < 12:
+                            continue
+
+                        if h_cls == self.HELMET_CLS and h_conf >= min_conf_helmet:
+                            helmets.append({"bbox": h_box, "conf": h_conf})
+                        elif h_cls == self.NO_HELMET_CLS and h_conf >= min_conf_no_helmet:
+                            no_helmets.append({"bbox": h_box, "conf": h_conf})
+
+            # Deduplicate boxes within each class
+            fused_helmets = []
+            sorted_h = sorted(helmets, key=lambda x: x["conf"], reverse=True)
+            while sorted_h:
+                best = sorted_h.pop(0)
+                fused_helmets.append(best)
+                sorted_h = [b for b in sorted_h if self._compute_iou(best["bbox"], b["bbox"]) < 0.45]
+
+            fused_no_helmets = []
+            sorted_nh = sorted(no_helmets, key=lambda x: x["conf"], reverse=True)
+            while sorted_nh:
+                best = sorted_nh.pop(0)
+                fused_no_helmets.append(best)
+                sorted_nh = [b for b in sorted_nh if self._compute_iou(best["bbox"], b["bbox"]) < 0.45]
+
+            # Cross-class conflict arbitration
+            filtered_no_helmet = [
+                nh for nh in fused_no_helmets
+                if not any(self._compute_iou(nh["bbox"], h["bbox"]) > 0.50 and h["conf"] > nh["conf"] for h in fused_helmets)
+            ]
+            filtered_helmet = [
+                h for h in fused_helmets
+                if not any(self._compute_iou(h["bbox"], nh["bbox"]) > 0.50 and nh["conf"] > h["conf"] for nh in fused_no_helmets)
+            ]
 
             helmet_count    = len(filtered_helmet)
             no_helmet_count = len(filtered_no_helmet)

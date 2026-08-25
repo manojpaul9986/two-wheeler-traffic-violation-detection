@@ -136,12 +136,17 @@ class V4SOTADetector(BaseTrafficViolationDetector):
             if crop is None or crop.shape[0] < 15 or crop.shape[1] < 15:
                 return (3 if is_triple else 1), 1
 
+            # Adaptive confidence: for large clear crops (>200px), use 0.18 to reject background clutter; for distant crops, use 0.10
+            ch, cw = crop.shape[:2]
+            min_conf_helmet = 0.12 if max(ch, cw) < 200 else 0.20
+            min_conf_no_helmet = 0.10 if max(ch, cw) < 200 else 0.18
+
             # Multi-scale pyramid passes
             helmets = []
             no_helmets = []
             for scale in [320, 640, 960]:
                 results = self.helmet_model.predict(
-                    crop, imgsz=scale, conf=self.CONF_NO_HELMET,
+                    crop, imgsz=scale, conf=min_conf_no_helmet,
                     verbose=False, device=self.device
                 )
                 if results and results[0].boxes is not None:
@@ -150,9 +155,15 @@ class V4SOTADetector(BaseTrafficViolationDetector):
                         h_conf = float(results[0].boxes.conf[j].item())
                         h_box = results[0].boxes.xyxy[j].cpu().numpy().tolist()
 
-                        if h_cls == self.HELMET_CLS and h_conf >= self.CONF_HELMET:
+                        hx1, hy1, hx2, hy2 = h_box
+                        if (hy1 + hy2) / 2 > ch * 0.70:
+                            continue
+                        if (hx2 - hx1) < 12 or (hy2 - hy1) < 12:
+                            continue
+
+                        if h_cls == self.HELMET_CLS and h_conf >= min_conf_helmet:
                             helmets.append({"bbox": h_box, "conf": h_conf})
-                        elif h_cls == self.NO_HELMET_CLS and h_conf >= self.CONF_NO_HELMET:
+                        elif h_cls == self.NO_HELMET_CLS and h_conf >= min_conf_no_helmet:
                             no_helmets.append({"bbox": h_box, "conf": h_conf})
 
             # Cross-class conflict arbitration
