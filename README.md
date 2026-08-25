@@ -1,4 +1,4 @@
-# Two-Wheeler Traffic Rule Violation Detection System 🛵🔍
+# Two-Wheeler Traffic Rule Violation Detection & ALPR System 🛵🔍
 
 **AID 728 — Computer Vision Course Project**  
 **Group 22:** Manoj Paul (`MT2025709`), Manojkumar V (`MT2025714`)  
@@ -8,12 +8,12 @@
 
 ## 📌 Executive Summary
 
-This repository contains an end-to-end, multi-stage Computer Vision pipeline for detecting traffic rule infractions on two-wheelers in real time from CCTV and traffic surveillance feeds.
+This repository contains an end-to-end, multi-stage Computer Vision pipeline for detecting traffic rule infractions on two-wheelers in real time from **CCTV camera feeds, surveillance video streams (.mp4), and static snapshots**.
 
 ### 🚦 Key Violations Detected:
 1. **Triple / Multi-Riding Violations:** Motorcycle carrying $\ge 3$ riders.
 2. **Helmet Non-Compliance:** Driver or pillion passenger riding without a safety helmet.
-3. **License Plate Extraction:** Automated License Plate Recognition (ALPR) supporting both **Indian (RTO syntax)** and **International vehicle registrations**, with automatic filtering of news captions and frame artifacts.
+3. **Automated License Plate Recognition (ALPR):** Robust character extraction supporting both **Indian (RTO syntax)** and **International vehicle registrations**, with automatic filtering of news banners and watermarks.
 
 ---
 
@@ -23,7 +23,8 @@ The pipeline consists of two streamlined variants tailored for different operati
 
 ```
                   ┌──────────────────────────────────────────────┐
-                  │              Input Traffic Frame             │
+                  │        Input: Image (.jpg/.png) or           │
+                  │             Video Feed (.mp4)                │
                   └──────────────────────┬───────────────────────┘
                                          │
                                          ▼
@@ -37,10 +38,10 @@ The pipeline consists of two streamlined variants tailored for different operati
 ┌───────────────────────────────────┐         ┌───────────────────────────────────┐
 │     Pipeline V1: Fast Baseline    │         │  Pipeline V2: Multi-Scale SOTA    │
 │  - Single 640px Pass              │         │  - 3-Tier Multi-Scale FPN Pyramid │
-│  - Fixed Scale Detection          │         │    (Passes @ 320px, 640px, 960px) │
-│  - High Throughput (~400ms)       │         │  - Scale-Invariant Head Fusion    │
-│  - Best for close daytime feeds   │         │  - Stacked Plate Multi-Line Fusion│
-│                                   │         │  - Best for Distant CCTV & Crowds │
+│  - High Throughput (~400ms)       │         │    (Passes @ 320px, 640px, 960px) │
+│  - Best for close daytime feeds   │         │  - Scale-Invariant Head Fusion    │
+│                                   │         │  - Plate Super-Resolution Module  │
+│                                   │         │  - Stacked Plate 2-Line Fusion    │
 └─────────────────┬─────────────────┘         └─────────────────┬─────────────────┘
                   │                                             │
                   └──────────────────────┬──────────────────────┘
@@ -49,14 +50,16 @@ The pipeline consists of two streamlined variants tailored for different operati
                   ┌──────────────────────────────────────────────┐
                   │     Stage 3: License Plate ALPR Engine       │
                   │ - YOLOv8s Plate Localization (plate_best.pt) │
+                  │ - PlateSuperResolver (Lanczos-4 + Unsharp)   │
                   │ - Offline PaddleOCR Text Extraction Engine   │
                   │ - Universal Regex & RTO Character Correction │
                   └──────────────────────┬───────────────────────┘
                                          │
                                          ▼
                   ┌──────────────────────────────────────────────┐
-                  │       Standard JSON Output & Visuals         │
-                  │    {"num_riders": 3, "helmet_viol": 3, ...}  │
+                  │     JSON Output & Annotated Visualizations   │
+                  │  {"num_riders": 3, "helmet_viol": 3, ...}    │
+                  │  (Images: .jpg/.png | Videos: .mp4)          │
                   └──────────────────────────────────────────────┘
 ```
 
@@ -97,24 +100,38 @@ The pipeline consists of two streamlined variants tailored for different operati
 pip install ultralytics paddlepaddle paddleocr opencv-python numpy
 ```
 
-### 2. Running Inference (Default: V2 Multi-Scale)
-```powershell
-# Run detection on an image
-python inference.py --image test_image_8.png
+---
 
-# Run and save annotated visual bounding box image
-python inference.py --image test_image_8.png --save_vis "output_8.jpg"
+### 2. Static Image Inference
+```powershell
+# Run default Production Multi-Scale Detector (V2) & Save Annotated Image
+python inference.py --image "test_image_8.png" --save_vis "my_result.jpg"
 
 # Run Fast Baseline (V1)
-python inference.py --variant v1 --image test_image_1.jpg --save_vis
+python inference.py --variant v1 --image "test_image_1.jpg" --save_vis "result_v1.jpg"
 ```
 
-### 3. Running Benchmark Suite
+---
+
+### 3. Video Stream Inference (.mp4, .avi, .mov)
+```powershell
+# Run detection on MP4 video with 5x frame skipping (Fast Surveillance):
+python inference.py --video "traffic_feed.mp4" --save_vis "annotated_video.mp4" --frame_skip 5
+
+# Run detection on every frame (Full-Density):
+python inference.py --video "traffic_feed.mp4" --save_vis "annotated_video_full.mp4"
+```
+
+---
+
+### 4. Running Benchmark Suite
 ```powershell
 python benchmark.py
 ```
 
-### 4. Output JSON Format
+---
+
+### 5. Standard Output JSON Format
 ```json
 {
   "violations": [
