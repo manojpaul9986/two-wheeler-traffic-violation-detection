@@ -258,8 +258,13 @@ class TrafficViolationDetector:
                 except Exception:
                     pass
 
-            if is_triple:
-                num_riders = max(num_riders, 3)
+            # Reconcile rider count: Trust resolved head detections over bulky luggage/backpacks.
+            # If 2 or more heads are clearly detected, use the actual head count.
+            # If heads are occluded (<=1 head) and is_triple is True, fall back to 3.
+            if num_riders >= 2:
+                num_riders = num_riders
+            elif is_triple:
+                num_riders = 3
             elif num_riders == 0:
                 num_riders = 1
 

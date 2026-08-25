@@ -176,8 +176,11 @@ class V2MultiScaleDetector(BaseTrafficViolationDetector):
             no_helmet_count = len(filtered_no_helmet)
             num_riders = helmet_count + no_helmet_count
 
-            if is_triple:
-                num_riders = max(num_riders, 3)
+            # Reconcile rider count: Trust resolved head detections over bulky luggage/backpacks.
+            if num_riders >= 2:
+                num_riders = num_riders
+            elif is_triple:
+                num_riders = 3
             elif num_riders == 0:
                 num_riders = 1
 
