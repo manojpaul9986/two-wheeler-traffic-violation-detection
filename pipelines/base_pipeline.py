@@ -57,21 +57,30 @@ class BaseTrafficViolationDetector(ABC):
                 else:
                     return ""
 
-            # Check if this matches standard Indian RTO format (2 letters + 1-2 digits)
-            is_indian_format = bool(re.match(r"^[A-Z]{2}\d{1,2}", text) or re.match(r"^\d{2}[A-Z]{2}", text))
+            # Check if an Indian RTO pattern is present (e.g., extracts 'UP65EB1464' from 'FUP65EB1464')
+            m_ind = re.search(r"[A-Z]{2}\d{1,2}[A-Z]{0,3}\d{1,4}", text)
+            if m_ind and len(m_ind.group(0)) >= 7:
+                text = m_ind.group(0)
+                is_indian_format = True
+            else:
+                is_indian_format = bool(re.match(r"^[A-Z]{2}\d{1,2}", text) or re.match(r"^\d{2}[A-Z]{2}", text))
 
             if is_indian_format:
                 digit_to_letter = {"0": "O", "1": "I", "8": "B", "5": "S", "6": "G", "2": "Z", "4": "A"}
                 letter_to_digit = {"O": "0", "I": "1", "B": "8", "S": "5", "G": "6", "Z": "2", "D": "0", "A": "4", "T": "7"}
+                
+                # Check for standard Indian registration pattern inside string (e.g. strips leading frame noise 'F' in 'FUP65EB1464')
+                m_ind = re.search(r"[A-Z]{2}\d{1,2}[A-Z]{0,3}\d{1,4}", text)
+                if m_ind:
+                    text = m_ind.group(0)
+
                 corrected = list(text)
 
-                # Pos 0-1: State code (Letters only)
                 for i in range(min(2, len(corrected))):
                     c = corrected[i]
                     if c.isdigit() and c in digit_to_letter:
                         corrected[i] = digit_to_letter[c]
 
-                # Pos 2-3: RTO district code (Digits only)
                 for i in range(2, min(4, len(corrected))):
                     c = corrected[i]
                     if c.isalpha() and c in letter_to_digit:

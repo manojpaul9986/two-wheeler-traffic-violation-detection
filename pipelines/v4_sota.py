@@ -8,6 +8,7 @@ Combines:
 """
 
 import os
+import re
 import cv2
 import time
 import numpy as np
@@ -136,10 +137,10 @@ class V4SOTADetector(BaseTrafficViolationDetector):
             if crop is None or crop.shape[0] < 15 or crop.shape[1] < 15:
                 return (3 if is_triple else 1), 1
 
-            # Adaptive confidence: for large clear crops (>200px), use 0.18 to reject background clutter; for distant crops, use 0.10
+            # Adaptive confidence: for large clear crops (>300px), use 0.18 to reject background clutter; for distant crops, use 0.10
             ch, cw = crop.shape[:2]
-            min_conf_helmet = 0.12 if max(ch, cw) < 200 else 0.20
-            min_conf_no_helmet = 0.10 if max(ch, cw) < 200 else 0.18
+            min_conf_helmet = 0.12 if max(ch, cw) < 300 else 0.20
+            min_conf_no_helmet = 0.10 if max(ch, cw) < 300 else 0.18
 
             # Multi-scale pyramid passes
             helmets = []

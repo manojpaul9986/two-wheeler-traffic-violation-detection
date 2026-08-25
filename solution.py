@@ -197,10 +197,10 @@ class TrafficViolationDetector:
                 # Can't analyse — assume violation
                 return (3 if is_triple else 1), 1
 
-            # Adaptive confidence: for large clear crops (>200px), use 0.18 to reject background clutter; for distant crops, use 0.10
+            # Adaptive confidence: for large clear crops (>300px), use 0.18 to reject background clutter; for distant crops, use 0.10
             ch, cw = crop.shape[:2]
-            min_conf_helmet = 0.12 if max(ch, cw) < 200 else 0.20
-            min_conf_no_helmet = 0.10 if max(ch, cw) < 200 else 0.18
+            min_conf_helmet = 0.12 if max(ch, cw) < 300 else 0.20
+            min_conf_no_helmet = 0.10 if max(ch, cw) < 300 else 0.18
 
             helmets = []
             no_helmets = []
@@ -495,12 +495,22 @@ class TrafficViolationDetector:
                 else:
                     return ""
 
-            # Check if this matches standard Indian RTO format (2 letters + 1-2 digits)
-            is_indian_format = bool(re.match(r"^[A-Z]{2}\d{1,2}", text) or re.match(r"^\d{2}[A-Z]{2}", text))
+            # Check if an Indian RTO pattern is present (e.g., extracts 'UP65EB1464' from 'FUP65EB1464')
+            m_ind = re.search(r"[A-Z]{2}\d{1,2}[A-Z]{0,3}\d{1,4}", text)
+            if m_ind and len(m_ind.group(0)) >= 7:
+                text = m_ind.group(0)
+                is_indian_format = True
+            else:
+                is_indian_format = bool(re.match(r"^[A-Z]{2}\d{1,2}", text) or re.match(r"^\d{2}[A-Z]{2}", text))
 
             if is_indian_format:
                 digit_to_letter = {"0": "O", "1": "I", "8": "B", "5": "S", "6": "G", "2": "Z", "4": "A"}
                 letter_to_digit = {"O": "0", "I": "1", "B": "8", "S": "5", "G": "6", "Z": "2", "D": "0", "A": "4", "T": "7"}
+                
+                m_ind = re.search(r"[A-Z]{2}\d{1,2}[A-Z]{0,3}\d{1,4}", text)
+                if m_ind:
+                    text = m_ind.group(0)
+
                 corrected = list(text)
 
                 for i in range(min(2, len(corrected))):
