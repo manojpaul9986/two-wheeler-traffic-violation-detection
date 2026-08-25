@@ -25,8 +25,8 @@ class V3TransformerDetector(BaseTrafficViolationDetector):
     """
 
     CONF_RIDER_GROUP = 0.20
-    CONF_HELMET = 0.22
-    CONF_NO_HELMET = 0.18
+    CONF_HELMET = 0.12
+    CONF_NO_HELMET = 0.10
     CONF_PLATE = 0.15
 
     HELMET_CLS = 0
