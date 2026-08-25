@@ -477,58 +477,45 @@ class TrafficViolationDetector:
         return variants if variants else [plate_crop]
 
     def _clean_plate_text(self, raw_text):
-        """Post-process OCR output for Indian license plates."""
+        """Universal License Plate cleaner supporting both Indian (RTO) and International plates."""
         try:
             if not raw_text:
                 return ""
 
+            # Remove special characters and spaces
             text = re.sub(r"[^A-Z0-9]", "", raw_text.upper().strip())
-
+            
+            # Reject long sentences/captions (>12 characters) or very short noise (<4 chars)
             if len(text) < 4:
-                return text
+                return text if len(text) >= 3 else ""
+            if len(text) > 12:
+                m = re.search(r"[A-Z0-9]{4,10}", text)
+                if m:
+                    text = m.group(0)
+                else:
+                    return ""
 
-            digit_to_letter = {"0": "O", "1": "I", "8": "B", "5": "S",
-                                "6": "G", "2": "Z", "4": "A"}
-            letter_to_digit = {"O": "0", "I": "1", "B": "8", "S": "5",
-                                "G": "6", "Z": "2", "D": "0", "A": "4", "T": "7"}
+            # Check if this matches standard Indian RTO format (2 letters + 1-2 digits)
+            is_indian_format = bool(re.match(r"^[A-Z]{2}\d{1,2}", text) or re.match(r"^\d{2}[A-Z]{2}", text))
 
-            corrected = list(text)
+            if is_indian_format:
+                digit_to_letter = {"0": "O", "1": "I", "8": "B", "5": "S", "6": "G", "2": "Z", "4": "A"}
+                letter_to_digit = {"O": "0", "I": "1", "B": "8", "S": "5", "G": "6", "Z": "2", "D": "0", "A": "4", "T": "7"}
+                corrected = list(text)
 
-            # pos 0-1: state code — must be letters
-            for i in range(min(2, len(corrected))):
-                c = corrected[i]
-                if c.isdigit() and c in digit_to_letter:
-                    corrected[i] = digit_to_letter[c]
+                for i in range(min(2, len(corrected))):
+                    c = corrected[i]
+                    if c.isdigit() and c in digit_to_letter:
+                        corrected[i] = digit_to_letter[c]
 
-            # pos 2-3: district code — must be digits
-            for i in range(2, min(4, len(corrected))):
-                c = corrected[i]
-                if c.isalpha() and c in letter_to_digit:
-                    corrected[i] = letter_to_digit[c]
+                for i in range(2, min(4, len(corrected))):
+                    c = corrected[i]
+                    if c.isalpha() and c in letter_to_digit:
+                        corrected[i] = letter_to_digit[c]
 
-            # remaining: series letters then final digits
-            if len(corrected) > 4:
-                rest        = corrected[4:]
-                digit_start = len(rest)
-                for j in range(len(rest) - 1, -1, -1):
-                    if rest[j].isdigit() or rest[j] in letter_to_digit:
-                        digit_start = j
-                    else:
-                        break
-                for j in range(digit_start):
-                    if rest[j].isdigit() and rest[j] in digit_to_letter:
-                        rest[j] = digit_to_letter[rest[j]]
-                for j in range(digit_start, len(rest)):
-                    if rest[j].isalpha() and rest[j] in letter_to_digit:
-                        rest[j] = letter_to_digit[rest[j]]
-                corrected = corrected[:4] + rest
+                return "".join(corrected)
 
-            result = "".join(corrected)
-
-            if re.match(self.INDIAN_PLATE_REGEX, result):
-                return result
-
-            return result
+            return text
 
         except Exception:
             return re.sub(r"[^A-Z0-9]", "", raw_text.upper().strip()) if raw_text else ""

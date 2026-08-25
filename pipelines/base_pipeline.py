@@ -36,68 +36,51 @@ class BaseTrafficViolationDetector(ABC):
 
     def clean_plate_text(self, raw_text: str) -> str:
         """
-        Post-processes OCR output with domain-specific Indian license plate rules.
+        Universal License Plate cleaner supporting both Indian (RTO) and International plates.
+        Filters out long news captions / watermarks (>11 chars).
         """
         try:
             if not raw_text:
                 return ""
 
-            # Check for direct Indian registration pattern substring
-            sub_match = re.search(r"[A-Za-z]{2}\s*\d{1,2}\s*[A-Za-z]{0,3}\s*\d{1,4}", raw_text)
-            target_str = sub_match.group(0) if sub_match else raw_text
-
-            text = re.sub(r"[^A-Z0-9]", "", target_str.upper().strip())
+            # Remove special characters and spaces
+            text = re.sub(r"[^A-Z0-9]", "", raw_text.upper().strip())
+            
+            # Reject long sentences/captions (>12 characters) or very short noise (<4 chars)
             if len(text) < 4:
-                return text
-
-            digit_to_letter = {
-                "0": "O", "1": "I", "8": "B", "5": "S",
-                "6": "G", "2": "Z", "4": "A"
-            }
-            letter_to_digit = {
-                "O": "0", "I": "1", "B": "8", "S": "5",
-                "G": "6", "Z": "2", "D": "0", "A": "4", "T": "7"
-            }
-
-            corrected = list(text)
-
-            # Pos 0-1: State code (Letters only)
-            for i in range(min(2, len(corrected))):
-                c = corrected[i]
-                if c.isdigit() and c in digit_to_letter:
-                    corrected[i] = digit_to_letter[c]
-
-            # Pos 2-3: RTO district code (Digits only)
-            for i in range(2, min(4, len(corrected))):
-                c = corrected[i]
-                if c.isalpha() and c in letter_to_digit:
-                    corrected[i] = letter_to_digit[c]
-
-            # Remaining: Series letters then unique vehicle digits
-            if len(corrected) > 4:
-                rest = corrected[4:]
-                digit_start = len(rest)
-                for j in range(len(rest) - 1, -1, -1):
-                    if rest[j].isdigit() or rest[j] in letter_to_digit:
-                        digit_start = j
-                    else:
-                        break
-
-                for j in range(digit_start):
-                    if rest[j].isdigit() and rest[j] in digit_to_letter:
-                        rest[j] = digit_to_letter[rest[j]]
-                for j in range(digit_start, len(rest)):
-                    if rest[j].isalpha() and rest[j] in letter_to_digit:
-                        rest[j] = letter_to_digit[rest[j]]
-                corrected = corrected[:4] + rest
-
-            result = "".join(corrected)
-            # Ensure maximum Indian plate length is 10-11 chars
-            if len(result) > 11:
-                m = re.search(r"[A-Z]{2}\d{1,2}[A-Z]{0,3}\d{1,4}", result)
+                return text if len(text) >= 3 else ""
+            if len(text) > 12:
+                # Try to extract an embedded plate substring (4-10 alphanumeric chars)
+                m = re.search(r"[A-Z0-9]{4,10}", text)
                 if m:
-                    return m.group(0)
-            return result
+                    text = m.group(0)
+                else:
+                    return ""
+
+            # Check if this matches standard Indian RTO format (2 letters + 1-2 digits)
+            is_indian_format = bool(re.match(r"^[A-Z]{2}\d{1,2}", text) or re.match(r"^\d{2}[A-Z]{2}", text))
+
+            if is_indian_format:
+                digit_to_letter = {"0": "O", "1": "I", "8": "B", "5": "S", "6": "G", "2": "Z", "4": "A"}
+                letter_to_digit = {"O": "0", "I": "1", "B": "8", "S": "5", "G": "6", "Z": "2", "D": "0", "A": "4", "T": "7"}
+                corrected = list(text)
+
+                # Pos 0-1: State code (Letters only)
+                for i in range(min(2, len(corrected))):
+                    c = corrected[i]
+                    if c.isdigit() and c in digit_to_letter:
+                        corrected[i] = digit_to_letter[c]
+
+                # Pos 2-3: RTO district code (Digits only)
+                for i in range(2, min(4, len(corrected))):
+                    c = corrected[i]
+                    if c.isalpha() and c in letter_to_digit:
+                        corrected[i] = letter_to_digit[c]
+
+                return "".join(corrected)
+
+            # International / Generic plate format: return clean alphanumeric string
+            return text
 
         except Exception:
             return re.sub(r"[^A-Z0-9]", "", raw_text.upper().strip()) if raw_text else ""
