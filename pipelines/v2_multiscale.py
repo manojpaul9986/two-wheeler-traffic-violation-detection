@@ -129,8 +129,8 @@ class V2MultiScaleDetector(BaseTrafficViolationDetector):
             if crop is None or crop.shape[0] < 15 or crop.shape[1] < 15:
                 return (3 if is_triple else 1), 1
 
-            # Multi-scale pyramid passes
-            scales = [960, 1280] if max(crop.shape[:2]) < 200 else [640, 960]
+            # Multi-scale pyramid passes (captures both large/wide helmets and micro-scale cropped heads)
+            scales = [320, 640, 960]
             fused_helmets = []
             fused_no_helmets = []
 

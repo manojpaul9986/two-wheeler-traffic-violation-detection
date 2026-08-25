@@ -135,24 +135,24 @@ class V4SOTADetector(BaseTrafficViolationDetector):
             if crop is None or crop.shape[0] < 15 or crop.shape[1] < 15:
                 return (3 if is_triple else 1), 1
 
-            results = self.helmet_model.predict(
-                crop, imgsz=960, conf=self.CONF_NO_HELMET,
-                verbose=False, device=self.device
-            )
-
+            # Multi-scale pyramid passes
             helmets = []
             no_helmets = []
+            for scale in [320, 640, 960]:
+                results = self.helmet_model.predict(
+                    crop, imgsz=scale, conf=self.CONF_NO_HELMET,
+                    verbose=False, device=self.device
+                )
+                if results and results[0].boxes is not None:
+                    for j in range(len(results[0].boxes)):
+                        h_cls = int(results[0].boxes.cls[j].item())
+                        h_conf = float(results[0].boxes.conf[j].item())
+                        h_box = results[0].boxes.xyxy[j].cpu().numpy().tolist()
 
-            if results and results[0].boxes is not None:
-                for j in range(len(results[0].boxes)):
-                    h_cls = int(results[0].boxes.cls[j].item())
-                    h_conf = float(results[0].boxes.conf[j].item())
-                    h_box = results[0].boxes.xyxy[j].cpu().numpy().tolist()
-
-                    if h_cls == self.HELMET_CLS and h_conf >= self.CONF_HELMET:
-                        helmets.append({"bbox": h_box, "conf": h_conf})
-                    elif h_cls == self.NO_HELMET_CLS and h_conf >= self.CONF_NO_HELMET:
-                        no_helmets.append({"bbox": h_box, "conf": h_conf})
+                        if h_cls == self.HELMET_CLS and h_conf >= self.CONF_HELMET:
+                            helmets.append({"bbox": h_box, "conf": h_conf})
+                        elif h_cls == self.NO_HELMET_CLS and h_conf >= self.CONF_NO_HELMET:
+                            no_helmets.append({"bbox": h_box, "conf": h_conf})
 
             # Cross-class conflict arbitration
             filtered_no_helmet = [
