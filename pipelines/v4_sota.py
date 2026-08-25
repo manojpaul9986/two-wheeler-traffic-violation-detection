@@ -288,8 +288,23 @@ class V4SOTADetector(BaseTrafficViolationDetector):
                             confs.append(float(s))
 
                 if texts:
+                    short_texts = [t for t in texts if len(re.sub(r"[^A-Za-z0-9]", "", t)) <= 10]
+                    if not short_texts:
+                        short_texts = texts
+
+                    candidates = []
+                    for i in range(len(short_texts)):
+                        candidates.append(short_texts[i])
+                        for j in range(i + 1, min(i + 3, len(short_texts))):
+                            candidates.append(short_texts[i] + short_texts[j])
+
+                    for cand in candidates:
+                        cleaned = self.clean_plate_text(cand)
+                        if re.match(r"^[A-Z]{2}\d{1,2}[A-Z]{0,3}\d{1,4}$", cleaned) and len(cleaned) >= 7:
+                            return (cleaned, sum(confs) / len(confs))
+
                     avg_c = sum(confs) / len(confs)
-                    full_t = " ".join(texts)
+                    full_t = " ".join(short_texts[:2])
                     if avg_c > best_conf and len(full_t.strip()) >= 3:
                         best_conf = avg_c
                         best_text = full_t

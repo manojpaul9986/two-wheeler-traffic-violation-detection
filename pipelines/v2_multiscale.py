@@ -271,9 +271,23 @@ class V2MultiScaleDetector(BaseTrafficViolationDetector):
                     if t:
                         texts.append(t)
                         confs.append(float(s))
-            if not texts:
-                return ("", 0.0)
-            return (" ".join(texts), sum(confs) / len(confs))
+            # Discard long English sentences / news captions (>10 alphanumeric characters)
+            short_texts = [t for t in texts if len(re.sub(r"[^A-Za-z0-9]", "", t)) <= 10]
+            if not short_texts:
+                short_texts = texts
+
+            candidates = []
+            for i in range(len(short_texts)):
+                candidates.append(short_texts[i])
+                for j in range(i + 1, min(i + 3, len(short_texts))):
+                    candidates.append(short_texts[i] + short_texts[j])
+
+            for cand in candidates:
+                cleaned = self.clean_plate_text(cand)
+                if re.match(r"^[A-Z]{2}\d{1,2}[A-Z]{0,3}\d{1,4}$", cleaned) and len(cleaned) >= 7:
+                    return (cleaned, sum(confs) / len(confs))
+
+            return (" ".join(short_texts[:2]), sum(confs) / len(confs))
         except Exception:
             return ("", 0.0)
 

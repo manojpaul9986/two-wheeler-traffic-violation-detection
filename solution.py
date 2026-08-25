@@ -406,18 +406,38 @@ class TrafficViolationDetector:
                     if not texts:
                         continue
 
-                    avg_conf  = sum(confs) / len(confs)
-                    full_text = " ".join(texts)
+                    # Discard long English sentences / news captions (>10 alphanumeric characters)
+                    short_texts = [t for t in texts if len(re.sub(r"[^A-Za-z0-9]", "", t)) <= 10]
+                    if not short_texts:
+                        short_texts = texts
 
-                    if avg_conf > best_conf and len(full_text.strip()) >= 3:
-                        best_conf = avg_conf
-                        best_text = full_text
+                    # Evaluate combinations of lines (handles stacked plates like 'UP65E' + 'B1464')
+                    candidates = []
+                    for i in range(len(short_texts)):
+                        candidates.append(short_texts[i])
+                        for j in range(i + 1, min(i + 3, len(short_texts))):
+                            candidates.append(short_texts[i] + short_texts[j])
+
+                    found_plate = ""
+                    for cand in candidates:
+                        cleaned = self._clean_plate_text(cand)
+                        if re.match(self.INDIAN_PLATE_REGEX, cleaned) and len(cleaned) >= 7:
+                            found_plate = cleaned
+                            break
+
+                    if found_plate:
+                        best_text = found_plate
+                        best_conf = sum(confs) / len(confs)
+                        break
+                    else:
+                        full_text = "".join(short_texts[:2])
+                        cleaned = self._clean_plate_text(full_text)
+                        if len(cleaned) <= 11 and (sum(confs) / len(confs)) > best_conf:
+                            best_conf = sum(confs) / len(confs)
+                            best_text = cleaned
 
                 except Exception:
                     continue
-
-            if best_text:
-                best_text = self._clean_plate_text(best_text)
 
             return (best_text, best_conf)
 

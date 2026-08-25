@@ -42,7 +42,11 @@ class BaseTrafficViolationDetector(ABC):
             if not raw_text:
                 return ""
 
-            text = re.sub(r"[^A-Z0-9]", "", raw_text.upper().strip())
+            # Check for direct Indian registration pattern substring
+            sub_match = re.search(r"[A-Za-z]{2}\s*\d{1,2}\s*[A-Za-z]{0,3}\s*\d{1,4}", raw_text)
+            target_str = sub_match.group(0) if sub_match else raw_text
+
+            text = re.sub(r"[^A-Z0-9]", "", target_str.upper().strip())
             if len(text) < 4:
                 return text
 
@@ -88,6 +92,11 @@ class BaseTrafficViolationDetector(ABC):
                 corrected = corrected[:4] + rest
 
             result = "".join(corrected)
+            # Ensure maximum Indian plate length is 10-11 chars
+            if len(result) > 11:
+                m = re.search(r"[A-Z]{2}\d{1,2}[A-Z]{0,3}\d{1,4}", result)
+                if m:
+                    return m.group(0)
             return result
 
         except Exception:
